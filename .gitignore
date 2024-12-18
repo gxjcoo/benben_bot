@@ -1,0 +1,44 @@
+# Python bytecode files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.pyo
+*.pyd
+*.pyc
+
+# Python virtual environment directories
+venv/
+env/
+.venv/
+.ENV/
+env.bak/
+venv.bak/
+
+# Distribution / packaging directories
+build/
+dist/
+*.egg-info/
+
+# pyenv
+.python-version
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Logs and temporary files
+*.log
+*.bak
+*.swp
+*.swo
+
+# System files
+.DS_Store
+Thumbs.db
