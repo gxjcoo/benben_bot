@@ -42,3 +42,25 @@ dist/
 # System files
 .DS_Store
 Thumbs.db
+
+# 忽略模型文件夹
+models/
+*.bin
+*.h5
+*.ckpt
+*.pt
+*.pkl
+
+# 忽略数据文件夹（如训练数据）
+data/
+
+# 忽略虚拟环境文件夹（如果有的话）
+venv/
+__pycache__/
+*.pyc
+
+# 忽略 Jupyter notebook 输出
+.ipynb_checkpoints/
+
+# 忽略日志文件
+*.log
