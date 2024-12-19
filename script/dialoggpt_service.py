@@ -2,7 +2,7 @@
 
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import config 
-from baidu_translate_service import BaiduTranslateService  # 导入 DialoGPT 服务
+from script.baidu_translate_service import BaiduTranslateService  
 translator = BaiduTranslateService()
 class DialoGPTService:
     def __init__(self):

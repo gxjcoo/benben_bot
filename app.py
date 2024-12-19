@@ -41,7 +41,7 @@ def ask_question():
     print(similarity_score, 'similarity_score')
 
     # 如果相似度较高，返回 FAQ 答案
-    if similarity_score >= 0.7:  # 相似度阈值可以根据需求调整
+    if similarity_score >= 0.5:  # 相似度阈值可以根据需求调整
         answer = faq_data[most_similar_idx]["answer"]
     else:
         # 否则，调用 DialoGPT 服务生成回答
