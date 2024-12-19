@@ -15,7 +15,7 @@ with open('models/model.pkl', 'rb') as f:
     model_data = pickle.load(f)
     model = model_data['model']
     question_embeddings = model_data['embeddings']
-    faq_data = model_data['faq_data']
+    resource_data = model_data['resource_data']
 
 @app.route('/')
 def index():
@@ -23,7 +23,7 @@ def index():
 
 @app.route('/ask', methods=['GET'])
 def ask_question():
-    user_question = request.args.get('question')
+    user_question = request.args.get('label')
     
     if not user_question:
         return jsonify({"error": "没有提供问题"}), 400
@@ -42,12 +42,12 @@ def ask_question():
 
     # 如果相似度较高，返回 FAQ 答案
     if similarity_score >= 0.5:  # 相似度阈值可以根据需求调整
-        answer = faq_data[most_similar_idx]["answer"]
+        content = resource_data[most_similar_idx]["content"]
     else:
         # 否则，调用 DialoGPT 服务生成回答
-        answer = dialoggpt_service.generate_response(user_question)
+        content = dialoggpt_service.generate_response(user_question)
 
-    return jsonify({"answer": answer})
+    return jsonify({"content": content})
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)  # 运行在5000端口

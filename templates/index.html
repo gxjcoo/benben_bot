@@ -1,25 +1,30 @@
 <!DOCTYPE html>
 <html lang="zh">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>笨笨机器人</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
     <div class="container">
-        <h1>笨笨机器人</h1>
-        <div class="input-box">
-            <input type="text" id="question" placeholder="请输入您的问题" onkeydown="handleKeyDown(event)">
-            <button onclick="askQuestion()">提交</button>
-        </div>
+      <h1>笨笨机器人</h1>
+      <div class="input-box">
+        <input
+          type="text"
+          id="label"
+          placeholder="请输入您的问题"
+          onkeydown="handleKeyDown(event)" />
+        <button onclick="askQuestion()">提交</button>
+      </div>
 
-        <div id="loading" class="loading">正在加载...</div>
+      <div id="loading" class="loading">正在加载...</div>
 
-        <div id="answer" class="answer"></div>
+      <div id="content" class="content"></div>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
-</body>
+  </body>
 </html>
