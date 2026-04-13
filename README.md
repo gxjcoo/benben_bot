@@ -21,3 +21,47 @@
 - [ ] 添加评分，更改答案权重
 - [ ] 收集没有答案或答案不满意问题【判断依据用户更换三次以上或匹配不到答案三次以上】
 - [ ] 数据源更新 20 次后或手动触发，自动训练模型
+
+## 红底数字目标自动跟随脚本
+
+新增脚本：`script/moving_target_tracker.py`
+
+### 适用场景
+
+- 屏幕中存在红色固定背景、内部数字可变化（如 1~30）的运动目标。
+- 目标会移动，鼠标可能脱离目标后需要重捕获。
+- 同时有多个同类目标，需要手动锁定或切换跟踪对象。
+
+### 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 运行
+
+```bash
+python script/moving_target_tracker.py --show-window
+```
+
+可选参数示例（只跟踪屏幕局部区域）：
+
+```bash
+python script/moving_target_tracker.py --region 100,100,1200,700 --fps 40
+```
+
+### 自动切换逻辑（无热键）
+
+- 鼠标靠近某个目标时自动锁定并跟随。
+- 当你主动把鼠标从当前目标移开（连续偏离）时，自动暂停跟随。
+- 暂停后，鼠标靠近另一个目标并持续短暂稳定后，自动切换并恢复跟随。
+- 若不打开调试窗口，使用 `Ctrl+C` 退出；开启 `--show-window` 时可用 `ESC` 退出。
+
+### 调参建议
+
+- 若误检多：提高 `--template-iou-threshold`（使用模板时）或提高 `--min-area`。
+- 若丢目标：增大 `--max-match-distance` 和 `--max-missing-frames`。
+- 若鼠标追踪太慢：增大 `--smooth-factor`（最大 1.0）。
+- 若切换太敏感：增大 `--switch-confirm-frames` 或减小 `--switch-distance`。
+- 若从 A 脱离困难：减小 `--disengage-distance` 或减小 `--disengage-frames`。
+- 若切到 B 后恢复跟随太慢：增大 `--reengage-distance`。
