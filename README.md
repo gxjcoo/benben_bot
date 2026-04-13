@@ -21,3 +21,46 @@
 - [ ] 添加评分，更改答案权重
 - [ ] 收集没有答案或答案不满意问题【判断依据用户更换三次以上或匹配不到答案三次以上】
 - [ ] 数据源更新 20 次后或手动触发，自动训练模型
+
+## 红底数字目标自动跟随脚本
+
+新增脚本：`script/moving_target_tracker.py`
+
+### 适用场景
+
+- 屏幕中存在红色固定背景、内部数字可变化（如 1~30）的运动目标。
+- 目标会移动，鼠标可能脱离目标后需要重捕获。
+- 同时有多个同类目标，需要手动锁定或切换跟踪对象。
+
+### 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 运行
+
+```bash
+python script/moving_target_tracker.py --show-window
+```
+
+可选参数示例（只跟踪屏幕局部区域）：
+
+```bash
+python script/moving_target_tracker.py --region 100,100,1200,700 --fps 40
+```
+
+### 热键
+
+- `F8`：开启/关闭自动跟随
+- `F9`：锁定离当前鼠标最近的目标
+- `F10`：在可见目标中循环切换
+- `F11`：取消锁定
+- `ESC`：退出脚本
+
+### 调参建议
+
+- 若误检多：提高 `--template-iou-threshold`（使用模板时）或提高 `--min-area`。
+- 若丢目标：增大 `--max-match-distance` 和 `--max-missing-frames`。
+- 若鼠标追踪太慢：增大 `--smooth-factor`（最大 1.0）。
+- 若只想“靠近后自动吸附”：保留 `--auto-lock-distance` 为正值；想关闭则设为 `0`。
