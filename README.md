@@ -50,17 +50,18 @@ python script/moving_target_tracker.py --show-window
 python script/moving_target_tracker.py --region 100,100,1200,700 --fps 40
 ```
 
-### 热键
+### 自动切换逻辑（无热键）
 
-- `F8`：开启/关闭自动跟随
-- `F9`：锁定离当前鼠标最近的目标
-- `F10`：在可见目标中循环切换
-- `F11`：取消锁定
-- `ESC`：退出脚本
+- 鼠标靠近某个目标时自动锁定并跟随。
+- 当你主动把鼠标从当前目标移开（连续偏离）时，自动暂停跟随。
+- 暂停后，鼠标靠近另一个目标并持续短暂稳定后，自动切换并恢复跟随。
+- 若不打开调试窗口，使用 `Ctrl+C` 退出；开启 `--show-window` 时可用 `ESC` 退出。
 
 ### 调参建议
 
 - 若误检多：提高 `--template-iou-threshold`（使用模板时）或提高 `--min-area`。
 - 若丢目标：增大 `--max-match-distance` 和 `--max-missing-frames`。
 - 若鼠标追踪太慢：增大 `--smooth-factor`（最大 1.0）。
-- 若只想“靠近后自动吸附”：保留 `--auto-lock-distance` 为正值；想关闭则设为 `0`。
+- 若切换太敏感：增大 `--switch-confirm-frames` 或减小 `--switch-distance`。
+- 若从 A 脱离困难：减小 `--disengage-distance` 或减小 `--disengage-frames`。
+- 若切到 B 后恢复跟随太慢：增大 `--reengage-distance`。

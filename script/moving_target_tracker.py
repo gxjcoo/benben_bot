@@ -3,23 +3,15 @@
 
 能力说明：
 1. 检测红色背景、固定尺寸的目标（数字内容可变化）。
-2. 多目标同时出现时，支持“离鼠标最近锁定”和“循环切换目标”。
+2. 自动锁定鼠标附近目标，并在多目标间进行意图切换。
 3. 目标移动或短暂丢失时，使用速度预测进行重捕获。
-4. 鼠标脱离目标后，可自动重新拉回到锁定目标中心。
-
-热键：
-- F8  : 开/关自动跟随
-- F9  : 锁定离当前鼠标最近的目标
-- F10 : 在可见目标之间循环切换
-- F11 : 取消当前锁定
-- ESC : 退出程序
+4. 当用户主动把鼠标从 A 移向 B 时，自动暂停跟随并切换锁定目标。
 """
 
 from __future__ import annotations
 
 import argparse
 import math
-import threading
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -28,7 +20,6 @@ import cv2
 import mss
 import numpy as np
 import pyautogui
-from pynput import keyboard
 
 pyautogui.FAILSAFE = False
 
@@ -212,7 +203,7 @@ class MultiObjectTracker:
         ids.sort()
         return ids
 
-    def lock_nearest(self, point: Point) -> Optional[int]:
+    def nearest_visible_track(self, point: Point) -> Tuple[Optional[int], float]:
         nearest_id = None
         nearest_dist = float("inf")
         for track in self.tracks.values():
@@ -222,20 +213,15 @@ class MultiObjectTracker:
             if dist < nearest_dist:
                 nearest_dist = dist
                 nearest_id = track.track_id
+        return nearest_id, nearest_dist
+
+    def lock_nearest(self, point: Point) -> Optional[int]:
+        nearest_id, _ = self.nearest_visible_track(point)
         self.locked_track_id = nearest_id
         return nearest_id
 
-    def cycle_lock(self) -> Optional[int]:
-        visible_ids = self.visible_track_ids()
-        if not visible_ids:
-            self.locked_track_id = None
-            return None
-        if self.locked_track_id not in visible_ids:
-            self.locked_track_id = visible_ids[0]
-            return self.locked_track_id
-        curr_idx = visible_ids.index(self.locked_track_id)
-        self.locked_track_id = visible_ids[(curr_idx + 1) % len(visible_ids)]
-        return self.locked_track_id
+    def set_lock(self, track_id: Optional[int]) -> None:
+        self.locked_track_id = track_id
 
     def clear_lock(self) -> None:
         self.locked_track_id = None
@@ -266,38 +252,88 @@ class MultiObjectTracker:
         return None
 
 
-class HotkeyController:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
+class AutoSwitchController:
+    """根据鼠标运动意图，自动暂停跟随并切换锁定目标。"""
+
+    def __init__(
+        self,
+        acquire_distance: float,
+        disengage_distance: float,
+        disengage_frames: int,
+        switch_distance: float,
+        switch_confirm_frames: int,
+        reengage_distance: float,
+    ) -> None:
+        self.acquire_distance = acquire_distance
+        self.disengage_distance = disengage_distance
+        self.disengage_frames = disengage_frames
+        self.switch_distance = switch_distance
+        self.switch_confirm_frames = switch_confirm_frames
+        self.reengage_distance = reengage_distance
+
         self.follow_enabled = True
-        self.running = True
-        self.pending_command: Optional[str] = None
+        self.away_counter = 0
+        self.candidate_id: Optional[int] = None
+        self.candidate_counter = 0
 
-    def on_press(self, key: keyboard.KeyCode) -> Optional[bool]:
-        with self._lock:
-            if key == keyboard.Key.esc:
-                self.running = False
-                return False
-            if key == keyboard.Key.f8:
-                self.follow_enabled = not self.follow_enabled
-                print(f"[HOTKEY] 自动跟随: {'开启' if self.follow_enabled else '关闭'}")
-            elif key == keyboard.Key.f9:
-                self.pending_command = "lock_nearest"
-            elif key == keyboard.Key.f10:
-                self.pending_command = "cycle"
-            elif key == keyboard.Key.f11:
-                self.pending_command = "clear"
-        return None
+    def update(self, tracker: MultiObjectTracker, mouse_rel: Point) -> bool:
+        locked_id = tracker.locked_track_id
 
-    def consume_command(self) -> Optional[str]:
-        with self._lock:
-            cmd = self.pending_command
-            self.pending_command = None
-            return cmd
+        if locked_id is None:
+            if self.follow_enabled:
+                nearest_id, nearest_dist = tracker.nearest_visible_track(mouse_rel)
+                if nearest_id is not None and nearest_dist <= self.acquire_distance:
+                    tracker.set_lock(nearest_id)
+                    print(f"[AUTO] 自动锁定目标: {nearest_id}")
+                return self.follow_enabled
 
-    def is_running(self) -> bool:
-        with self._lock:
-            return self.running
+            self._update_manual_candidate(tracker, mouse_rel)
+            return self.follow_enabled
+
+        locked_track = tracker.tracks.get(locked_id)
+        if locked_track is None:
+            tracker.clear_lock()
+            self.follow_enabled = False
+            return self.follow_enabled
+
+        dist_to_locked = _distance(mouse_rel, locked_track.center)
+        if self.follow_enabled:
+            if dist_to_locked > self.disengage_distance:
+                self.away_counter += 1
+            else:
+                self.away_counter = 0
+            if self.away_counter >= self.disengage_frames:
+                self.follow_enabled = False
+                self.away_counter = 0
+                tracker.clear_lock()
+                self.candidate_id = None
+                self.candidate_counter = 0
+                print("[AUTO] 检测到手动脱离，暂停跟随并等待新目标")
+            return self.follow_enabled
+
+        self._update_manual_candidate(tracker, mouse_rel)
+        return self.follow_enabled
+
+    def _update_manual_candidate(self, tracker: MultiObjectTracker, mouse_rel: Point) -> None:
+        nearest_id, nearest_dist = tracker.nearest_visible_track(mouse_rel)
+        if nearest_id is None or nearest_dist > self.switch_distance:
+            self.candidate_id = None
+            self.candidate_counter = 0
+            return
+
+        if nearest_id == self.candidate_id:
+            self.candidate_counter += 1
+        else:
+            self.candidate_id = nearest_id
+            self.candidate_counter = 1
+
+        if self.candidate_counter >= self.switch_confirm_frames:
+            tracker.set_lock(nearest_id)
+            if nearest_dist <= self.reengage_distance:
+                self.follow_enabled = True
+                self.candidate_id = None
+                self.candidate_counter = 0
+                print(f"[AUTO] 自动切换并恢复跟随: {nearest_id}")
 
 
 def _distance(a: Point, b: Point) -> float:
@@ -343,9 +379,16 @@ def run(args: argparse.Namespace) -> None:
         max_match_distance=args.max_match_distance,
         max_missing_frames=args.max_missing_frames,
     )
-    hotkeys = HotkeyController()
+    auto_switch = AutoSwitchController(
+        acquire_distance=args.acquire_distance,
+        disengage_distance=args.disengage_distance,
+        disengage_frames=args.disengage_frames,
+        switch_distance=args.switch_distance,
+        switch_confirm_frames=args.switch_confirm_frames,
+        reengage_distance=args.reengage_distance,
+    )
 
-    print("脚本已启动，热键：F8 跟随开关 | F9 锁最近 | F10 切换目标 | F11 清锁定 | ESC 退出")
+    print("脚本已启动（自动模式）：Ctrl+C 退出，或调试窗口内按 ESC 退出")
 
     with mss.mss() as sct:
         if args.monitor < 1 or args.monitor >= len(sct.monitors):
@@ -353,11 +396,8 @@ def run(args: argparse.Namespace) -> None:
         capture_region = _parse_region(args.region, sct.monitors[args.monitor])
         fps_interval = 1.0 / max(args.fps, 1.0)
 
-        listener = keyboard.Listener(on_press=hotkeys.on_press)
-        listener.start()
-
         try:
-            while hotkeys.is_running():
+            while True:
                 t0 = time.time()
 
                 screen = np.array(sct.grab(capture_region))
@@ -365,28 +405,16 @@ def run(args: argparse.Namespace) -> None:
                 detections, _ = detector.detect(frame)
                 tracker.update(detections)
 
-                cmd = hotkeys.consume_command()
                 mouse_abs = pyautogui.position()
                 mouse_rel = (
                     mouse_abs.x - capture_region["left"],
                     mouse_abs.y - capture_region["top"],
                 )
 
-                if cmd == "lock_nearest":
-                    locked = tracker.lock_nearest(mouse_rel)
-                    print(f"[LOCK] 锁定目标: {locked}")
-                elif cmd == "cycle":
-                    locked = tracker.cycle_lock()
-                    print(f"[LOCK] 切换目标: {locked}")
-                elif cmd == "clear":
-                    tracker.clear_lock()
-                    print("[LOCK] 已取消锁定")
-
-                if args.auto_lock_distance > 0:
-                    tracker.auto_lock_if_close(mouse_rel, args.auto_lock_distance)
+                follow_enabled = auto_switch.update(tracker, mouse_rel)
 
                 target_rel = tracker.get_locked_position()
-                if target_rel and hotkeys.follow_enabled:
+                if target_rel and follow_enabled:
                     target_abs = (
                         capture_region["left"] + target_rel[0],
                         capture_region["top"] + target_rel[1],
@@ -411,7 +439,6 @@ def run(args: argparse.Namespace) -> None:
                 if wait > 0:
                     time.sleep(wait)
         finally:
-            listener.stop()
             if args.show_window:
                 cv2.destroyAllWindows()
 
@@ -434,12 +461,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-aspect", type=float, default=1.35, help="宽高比上限")
     parser.add_argument("--max-match-distance", type=float, default=110.0, help="目标关联最大距离")
     parser.add_argument("--max-missing-frames", type=int, default=10, help="最大允许丢失帧数")
-    parser.add_argument(
-        "--auto-lock-distance",
-        type=float,
-        default=90.0,
-        help="鼠标离目标小于该距离时自动锁定，<=0 表示关闭",
-    )
+    parser.add_argument("--acquire-distance", type=float, default=95.0, help="鼠标靠近目标时自动锁定阈值")
+    parser.add_argument("--disengage-distance", type=float, default=42.0, help="鼠标偏离锁定目标超过该值时暂停跟随")
+    parser.add_argument("--disengage-frames", type=int, default=2, help="连续偏离多少帧触发暂停跟随")
+    parser.add_argument("--switch-distance", type=float, default=85.0, help="鼠标靠近新目标的切换候选阈值")
+    parser.add_argument("--switch-confirm-frames", type=int, default=2, help="连续命中候选目标多少帧后切换")
+    parser.add_argument("--reengage-distance", type=float, default=35.0, help="鼠标接近新目标后恢复自动跟随阈值")
     parser.add_argument("--smooth-factor", type=float, default=0.35, help="鼠标移动平滑系数(0,1]")
     parser.add_argument("--stop-distance", type=float, default=2.0, help="距离小于该值停止微调")
     parser.add_argument("--show-window", action="store_true", help="显示调试窗口")
